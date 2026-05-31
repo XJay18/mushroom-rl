@@ -244,6 +244,8 @@ class SAC(DeepAC):
         policy_parameters = chain(actor_mu_approximator.model.network.parameters(),
                                   actor_sigma_approximator.model.network.parameters())
 
+        self._iter = 1
+
         super().__init__(mdp_info, policy, actor_optimizer, policy_parameters)
 
         self._replay_memory = ReplayMemory(mdp_info, self.info, initial_replay_size, max_replay_size)
@@ -259,7 +261,8 @@ class SAC(DeepAC):
             _target_critic_approximator='mushroom',
             _use_log_alpha_loss='primitive',
             _log_alpha='torch',
-            _alpha_optim='torch'
+            _alpha_optim='torch',
+            _iter='primitive'
         )
 
     def fit(self, dataset):
@@ -279,6 +282,11 @@ class SAC(DeepAC):
             self._critic_approximator.fit(state, action, q, **self._critic_fit_params)
 
             self._update_target(self._critic_approximator, self._target_critic_approximator)
+
+            # Print fit information
+            if self._iter % 400 == 0:
+                self._log_info(dataset, state, action, reward, next_state, absorbing)
+            self._iter += 1
 
     def _loss(self, state, action_new, log_prob):
         q_0 = self._critic_approximator(state, action_new, idx=0)
@@ -325,3 +333,44 @@ class SAC(DeepAC):
     @property
     def _alpha(self):
         return self._log_alpha.exp()
+
+    def _log_info(self, dataset, state, action, reward, next_state, absorbing):
+        if self._logger:
+            with torch.no_grad():
+                q_next = self._next_q(next_state, absorbing)
+                q_target = reward + self.mdp_info.gamma * q_next
+                q_pred_0 = self._critic_approximator(state, action, idx=0)
+                q_pred_1 = self._critic_approximator(state, action, idx=1)
+
+                # MSE Loss
+                loss_q0 = torch.nn.functional.mse_loss(q_pred_0, q_target)
+                loss_q1 = torch.nn.functional.mse_loss(q_pred_1, q_target)
+                avg_q_loss = (loss_q0 + loss_q1) / 2.0
+
+                dist = self.policy.distribution(state)
+
+                # Get standard deviation (noise level)
+                # 'scale' is the standard deviation of the Normal distribution
+                policy_std = dist.scale.mean().item()
+
+                # We cannot simply use dist.log_prob(action) because 'action' in the buffer 
+                # is squashed (tanh), but 'dist' is the unsquashed Gaussian.
+                # We ask the policy to re-sample and give us the correct corrected log_prob.
+                _, log_prob = self.policy.compute_action_and_log_prob_t(state)
+                entropy = -log_prob.mean()
+
+                current_alpha = self._alpha.item()
+
+                avg_rwd = dataset.undiscounted_return.mean().item()
+
+                msg = "Iteration {}:\n\t\t\t\trewards {:.4f} q_loss {:.4f}\n\t\t\t\tentropy {:.4f}  alpha {:.4f}  std {:.4f}".format(
+                    self._iter,
+                    avg_rwd,
+                    avg_q_loss.item(),
+                    entropy.item(),
+                    current_alpha,
+                    policy_std
+                )
+
+                self._logger.info(msg)
+                self._logger.weak_line()

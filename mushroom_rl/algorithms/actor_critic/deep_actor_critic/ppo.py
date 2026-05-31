@@ -116,9 +116,10 @@ class PPO(OnPolicyDeepAC):
                 logging_ent = self.policy.entropy(x)
                 new_pol_dist = self.policy.distribution(x)
                 logging_kl = torch.mean(torch.distributions.kl.kl_divergence(new_pol_dist, old_pol_dist))
-                avg_rwd = np.mean(dataset.undiscounted_return)
-                msg = "Iteration {}:\n\t\t\t\trewards {} vf_loss {}\n\t\t\t\tentropy {}  kl {}".format(
-                    self._iter, avg_rwd, logging_verr, logging_ent, logging_kl)
+                avg_rwd = dataset.undiscounted_return.mean().item()
+                policy_std = torch.exp(self.policy._log_sigma).mean().cpu().detach().numpy()
+                msg = "Iteration {}:\n\t\t\t\trewards {} vf_loss {}\n\t\t\t\tentropy {}  kl {}  std {}".format(
+                    self._iter, avg_rwd, logging_verr, logging_ent, logging_kl, policy_std)
 
                 self._logger.info(msg)
                 self._logger.weak_line()
