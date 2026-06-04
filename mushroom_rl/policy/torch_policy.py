@@ -192,7 +192,7 @@ class GaussianTorchPolicy(TorchPolicy):
         self._mu = Regressor(TorchApproximator, input_shape, output_shape, network=network, **params)
         self._predict_params = dict()
 
-        log_sigma_init = torch.ones(self._action_dim, device=TorchUtils.get_device()) * torch.log(TorchUtils.to_float_tensor(std_0))
+        log_sigma_init = torch.ones(self._action_dim, device=TorchUtils.get_device(), dtype=torch.float) * torch.log(TorchUtils.to_float_tensor(std_0))
 
         self._log_sigma = nn.Parameter(log_sigma_init)
 

@@ -373,6 +373,10 @@ class Dataset(Serializable):
         return self.compute_J(self._dataset_info.gamma)
 
     @property
+    def reward_sequence(self):
+        return self.get_reward_sequence()
+    
+    @property
     def array_backend(self):
         return self._array_backend
 
@@ -519,6 +523,14 @@ class Dataset(Serializable):
             return J.min(), J.max(), J.mean(), median, len(J)
         else:
             return 0, 0, 0, 0, 0
+
+    def get_reward_sequence(self):
+        r_ep = split_episodes(self.last, self.reward)
+
+        if len(r_ep.shape) == 1:
+            r_ep = self._array_backend.expand_dims(r_ep, 0)
+
+        return r_ep
 
     def _convert(self, *arrays, to='numpy'):
         if to == 'numpy':
